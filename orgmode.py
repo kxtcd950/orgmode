@@ -299,7 +299,7 @@ class AbstractCheckboxCommand(sublime_plugin.TextCommand):
         if '[-]' in self.view.substr(line):
             return CheckState.Indeterminate
         if '[ ]' in self.view.substr(line):
-            return CheckState.Unchecked 
+            return CheckState.Unchecked
         if '[X]' in self.view.substr(line):
             return CheckState.Checked
         return CheckState.Error
@@ -327,7 +327,7 @@ class AbstractCheckboxCommand(sublime_plugin.TextCommand):
         return (num_children, checked_children)
 
     def update_line(self, edit, region, parent_update=True):
-        print ('update_line', self.view.rowcol(region.begin())[0]+1)
+        #print ('update_line', self.view.rowcol(region.begin())[0]+1)
         (num_children, checked_children) = self.recalc_summary(region)
         if not num_children > 0:
             return False
@@ -392,6 +392,60 @@ class AbstractCheckboxCommand(sublime_plugin.TextCommand):
             parent = self.find_parent(region)
             if parent:
                 self.update_line(edit, parent)
+
+
+class OrgmodeCycleTodoCommand(sublime_plugin.TextCommand):
+
+    def __init__(self, *args, **kwargs):
+        super(OrgmodeCycleTodoCommand, self).__init__(*args, **kwargs)
+
+        self.status = ["TODO", "WORKING", "DONE"]
+        todo_pattern = r"|".join(self.status)
+        self.todo_regex = re.compile(todo_pattern)
+
+
+    def run(self, edit):
+
+        view = self.view
+        sels = view.sel()
+        sel = sels[0]
+
+        # Get the scope name for the current cursor position
+        # also contains other scopes
+        if 'orgmode.todo' not in view.scope_name(sel.end()):
+            return
+
+        # If the cursor is at the end of the view, return.
+        if (sel.end() == sel.begin()) and (sel.end() == view.size()):
+            view.insert(edit, view.size(), "\n")
+            view.show(view.size())
+            return
+
+        region = view.extract_scope(sel.end())
+
+        todo = self.get_todo(region)
+        content = self.view.substr(todo)
+
+        next_status_index = (self.status.index(content) + 1) % len(self.status)
+        view.replace(edit, todo, self.status[next_status_index])
+
+
+    def get_todo(self, line):
+        view = self.view
+        row, _ = view.rowcol(line.begin())
+        content = view.substr(line)
+        # print content
+        match = self.todo_regex.search(content)
+        if not match:
+            return None
+        # checkbox = match.group(1)
+        # print repr(checkbox)
+        # print dir(match), match.start(), match.span()
+        col_start, col_stop = match.span()
+        return sublime.Region(
+            view.text_point(row, col_start),
+            view.text_point(row, col_stop),
+        )
 
 
 class OrgmodeToggleCheckboxCommand(AbstractCheckboxCommand):
@@ -500,8 +554,8 @@ def has_file_ext(view, ext):
     """
     if not view.file_name(): return False
     if not ext.strip().replace('.', ''): return False
-  
+
     if not ext.startswith('.'):
         ext = '.' + ext
-  
-    return view.file_name().endswith(ext)
+
+    return view.file_name().lower().endswith(ext)
